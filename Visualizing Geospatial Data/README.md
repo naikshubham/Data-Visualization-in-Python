@@ -169,6 +169,385 @@ plt.title('Council Districts')
 plt.show()
 ```
 
+### Projections and Coordinate Reference Systems
+- We can construct a GeoDataFrame from a df, as long as we have the required pieces in place: a geometryy column and a cordinate reference system or CRS.
+
+#### Projections
+- Before we talk about CRS, its helpful to talk abt projections. Map projections are necessary for projecting the earth in 2-dimensional space.
+- The most common projection is the mercator projection. A variation of the mercator projection known as WGS84 (which is short for the world geodetic system 1984 standard) is the projection used in most mapping apps and by the Global Positioning System or GPS.
+
+#### Coordinate Reference Systems
+- Setting a coordinate reference systems for a GeoDataFrame tells geopandas how to interpret the longitude and latitude coordinates. Distance units are also dependent on the CRS being used.
+- The most common coordinate reference systems are EPSG:4326 and RPSg:3857, both of which use the WGS84 projection. EPSG stands for European Petroleum Survey Group, the entity that developed these systems.
+- EPSG:4326 is used with applications like Google Earth, while EPSG:3857 is used in most map applications.
+- **Geometry** is a special data structure, and is a required component of GeoDataFrames.
+
+```python
+# create a point geometry column
+
+from shapely.geometry import Point
+schools['geometry'] = schools.apply(lambda x:Point((x.Longitude, x.Latitude)), axis=1)
+schools.head(3)
+```
+
+- To create a geometry column, first build a representation of the geometry and then use a specific constructor from the geometry module in the shapely package.
+- Shapely is a python package that provides methods for creating and working with points, lines and polygons.
+- We can create a Point geometry from Longitude and Latitude, by applying a lambda function that combines longitude and latitude to create a tuple and constructs a Point geometry from that tuple.
+- Now the schools data has a geometry column and is ready to be used to build a GeoDataFrame.
+
+#### Creating a GeoDataFrame from a DataFrame
+- To construct a GeoDataFrame from the schools DataFrame, use the GeoDataFrame constructor, passing it - the schools DataFrame, the crs to use, and the geometry to use.
+- Below we have created an object called `school_crs`, and set it to use the `epsg:4326` Coordinate Reference System.
+- We specify the geometry column we just created as the new GeoDataFrame's geometry.
+- schools_geo is identical to schools data. Only the datatype has changed from a DataFrame to a GeoDataFrame.
+
+```python
+import geopandas as pd
+
+schools_crs = {'init':'epsg:4326'}
+schools_geo = gpd.DataFrame(schools,
+                            crs = schools_crs,
+                            geometry = schools.geometry)
+```
+
+#### Changing from one CRS to another
+- Notice that the schools `geo_geometry` uses `degrees` to measure distance from the reference points: the Prime Meridian and the Equator.
+- We can convert the **geometry to measure distance in meters**, using the `to_crs()` method.
+- Here we convert the geometry column of schools_geo to **EPSG:3857**. The resulting measurements are in meters.
+- The original Long and Lat columns remain in decimal degress units. **`to_crs()`** only changes the geometry column.
+ 
+### Spatial Joins
+
+#### The .sjoin() op argument
+- Geopandas has a spatial join method called **`sjoin()`**. sjoin() takes an argument - op, short for operation, which specifies the type of spatial join.
+- op is one of 3 types : **intersects, contains, or within**
+
+```python
+import geopandas as gpd
+
+gpd.sjoin(blue_region_gdf, black_point_gdf, op = <opeartion>)
+```
+
+#### Using .sjoin(), op = 'intersects'
+- `intersects` returns all observations where the blue region intersects points.
+- `contains` returns observations where the blue_region completely contains points.
+- `within` there are no cases where the blue region is within a point.
+
+```python
+gpd.sjoin(blue_region_gdf, black_point_gdf, op='intersects')
+gpd.sjoin(blue_region_gdf, black_point_gdf, op='contains')
+gpd.sjoin(blue_region_gdf, black_point_gdf, op='within')
+```
+
+#### The .sjoin() op argument - within
+
+```python
+# find council districts within school districts
+
+within_gdf = gpd.sjoin(council_districts, school_districts, op='within')
+print("Council districts within school districts:", within_gdf.shape[0])
+```
+
+#### The .sjoin() op argument - contains
+
+```python
+# find school districts that contain council districts
+
+contains_gdf = pd.sjoin(school_districts, council_districts, op='contains')
+print("school districts contain council districts:", contains_gdf.shape[0])
+```
+
+#### The .sjoin() op argument - intersects
+
+```python
+# find council districts that intersects with school districts
+
+intersects_gdf = gpd.sjoin(council_districts, school_districts, op='intersects')
+print("Council districts intersects school districts:", intersect.shape[0])
+```
+
+```python
+within_gdf.district_left = council_district
+within_gdf.district_right = school_district
+within_gdf[['council_district', 'school_district']].
+            groupby('school_district').agg('count').sort_values('council_district'), ascending=False)
+```
+
+### GeoSeries attributes and methods
+
+#### Shapely attributes and methods
+- We can think of a GeoSeries as the geometry column of a GeoDataFrame. Geopandas inherits a number of useful methods and attributes from the Shapely package.
+
+```python
+# the geometry column in a GeoSeries
+type(school_districts.geometry)
+```
+
+- **Geoseries.area** : The area attribute returns the calculated area of a geometry.
+- **GeoSeries.centroid** : The centroid attribute returns the center point of a geometry.
+- **GeoSeries.distance** : The distance method gives the minimum distance from a geometry to a location specified using the `other` argument.
+
+#### GeoSeries.area
+- returns the area of each geometry in a GeoSeries. The units for area depend on the distance units for the coordinate reference system that the GeoSeries is using.
+
+```python
+# area of first polygon in districts
+print(districts.geometry[0].area)
+
+# calculate area of each school district
+district_area = school_districts.geometry.area
+# print the area and crs used
+print(district_area.sort_values(ascending=False))
+print(school_districts.crs)
+```
+
+- We can change the CRS to one that uses meters for distance and then convert meters squared to kilometers squared.
+
+```python
+# create a copy of school_districts that uses EPSG:3857
+school_districts_3857 = school_districts.to_crs(epsg=3857)
+
+# define a variable for m**2 and km**2 and get area in km squared
+sqm_to_sqkm = 10**6
+district_area_km = school_districts_3857.geometry.area / sqkm_to_sqm
+print(district_area_km.sort_values(ascending=False))
+print(school_districts_3857.crs)
+```
+
+#### GeoSeries.centroid
+
+```python
+districts.geometry.centroid[0]
+```
+
+#### GeoSeries.distance()
+- GeoSeries.distance(other) - returns minimum distance to other
+
+```python
+# distance from red_pt to centroid
+cen = districts.geometry.centroid[0]
+print(red_pt.distance(other=cen)
+```
+
+#### Distance between two points
+
+```python
+district_one = school_districts.loc[school_districts.district == '1']
+
+# create geometry in schools
+schools['geometry'] = schools.apply(lambda x:Point((x.lng, x.lat)), axis=1)
+
+# construct schools GeoDataFrame
+schools_geo = gpd.GeoDataFrame(schools, crs=district_one.crs, geometry=schools.geometry)
+
+# spatial join schools within dist 1
+schools_in_dist1 = gpd.sjoin(schools_geo, district_one, op='within')
+```
+
+- Calculate the distance between each school and the center_point of school_district_one.
+
+```python
+import pprint
+
+distances = {}
+for row in schools_in_dist1.iterrows():
+    vals = row[1]
+    key = vals['name']
+    ctr = vals['center']
+    distances[key] = vals['geometry'].distance(ctr)
+pprint.pprint(distances)
+```
+
+### Street maps with folium
+- Folium is a python package for interactive maps built upon Leaflet.js
+
+#### folium.Map()
+- To create a map with folium, we pass our starting coordinate pair as `location` to the folium Map constructor to create a map object. Use `display()` to show the map.
+- `display` is part of ipython notebooks.
+- Below we have used the latitude and longitude that describe the point location of the Eiffel Tower in Paris, France.
+- **Folium always wants coordinates as an array, with the latitude first.**
+
+```python
+import folium
+
+# construct a map centered at the Eiffel Tower
+eiffel_tower = folium.Map(location=[48.8583736, 2.2922926])
+
+# display the map
+display(eiffel_tower)
+```
+
+#### Setting the zoom level
+- We can set an initial zoom level when we construct a map with the zoom_start argument. The higher the number, the closer the map will zoom into the starting coordinate pair.
+- Here we have set zoom_start to 12, which will get us nice and close.
+
+```python
+import folium
+
+# construct a map centered at the Eiffel Tower
+eiffel_tower = folium.Map(location=[48.8583736, 2.2922926], zoom_start = 12)
+
+# display the map
+display(eiffel_tower)
+```
+
+#### Folium location from centroid
+- We want to use the point in the center column of district_one as the starting coordinate of a folium map called district_one map.
+- Remember that we need to reverse the order of the coordinate pair for folium so that latitude is first. 
+- The `center` column is a GeoSeries and the value stored in that column is a Point geometry. Will save that Point geometry to a variables called `center_point`.
+
+```python
+center_point = district_one.center[0]
+type(center_point)
+
+# reverse the order for folium location array
+district_center = [center_point.y, center_point.x]
+
+# print center point and district_center
+print(center_point)
+print(district_center)
+```
+
+- We'll use the district center array as the location for a folium map
+
+#### Adding a polygon to a folium map
+- Here, we create a map object called `district1_map` using `district_center` for the location.
+- Next we pass the polygon for district_one to the folium GeoJson constructor in order to draw the shape of school district one.
+- We use the `add_to()` method to add the polygon to the district_one map.
+
+```python
+# create a folium map centered on district 1
+district1_map = folium.Map(location = district_center)
+
+# add the outline of district one
+folium.GeoJson(district_one.geometry).add_to(district1_map)
+
+# display the resulting map
+display(district1_map)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
